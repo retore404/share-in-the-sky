@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <title>Share in the sky | Share something on Bluesky</title>
+  <link rel="stylesheet" href="style.css" type="text/css">
+  <script type="module">
+    import atprotoapi from 'https://cdn.jsdelivr.net/npm/@atproto/api@0.3.3/+esm'
+    const { BskyAgent } = atprotoapi
+    const agent = new BskyAgent({ service: "https://bsky.social" })
+    let postResult;
+
+    async function post() {
+      await agent.login({ identifier: document.getElementById("bsky-id").value, password: document.getElementById("bsky-password").value })
+      postResult = await agent.post({
+        $type: "app.bsky.feed.post",
+        text: document.getElementById("share-content").value,
+      });
+      console.log(postResult);
+    }
+
+    export default post
+
+    // Postボタンがクリックされたとき，postを実行する．
+    window.addEventListener('DOMContentLoaded', () => {
+      submitButton.addEventListener('click', post);
+    });
+  </script>
+  <script type="text/javascript">
+    function getQueryString() {
+      const shareString = getParam("text");
+      const shareUrl = getParam("url")
+      console.log(shareString)
+      console.log(shareUrl)
+
+      // クエリ文字列が両方nullだったら処理を終了
+      if(shareString == null && shareUrl == null) {
+        return;
+      }
+
+      // クエリ文字列がnullでないとき，textareaに値を設定
+
+      document.getElementById("share-content").value = shareString + "\n" + shareUrl
+
+    }
+
+    /**
+      * Get the URL parameter value
+      *
+      * @param  name {string} パラメータのキー文字列
+      * @return  url {url} 対象のURL文字列（任意）
+      */
+    function getParam(name, url) {
+      if (!url) url = window.location.href;
+      name = name.replace(/[\[\]]/g, "\\$&");
+      const regex = new RegExp("[?&]" + name + "(=([^&#]*)|&|#|$)"),
+      results = regex.exec(url);
+      if (!results) return null;
+      if (!results[2]) return '';
+      return decodeURIComponent(results[2].replace(/\+/g, " "));
+    }
+
+
+  </script>
+</head>
+
+<body onload="getQueryString()">
+  <div id="wrapper">
+    <div id="share">
+      <h1>Share in the Bluesky</h1>
+      <textarea id="share-content"></textarea>
+      <form id="auth-and-post-row">
+        <input type="text" id="bsky-id" name="bsky-id" autocomplete="username" placeholder="username">
+        <input type="password" id="bsky-password" name="bsky-password" autocomplete="current-password" placeholder="password">
+        <div id="submitButton"><span>Post</span></div>
+      </form>
+    </div>
+  </div>
+</body>
+
+</html>

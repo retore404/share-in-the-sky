@@ -1,0 +1,53 @@
+body {
+  ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Helvetica Neue,Arial,Noto Sans,sans-serif,Apple Color Emoji,Segoe UI Emoji,Segoe UI Symbol,Noto Color Emoji;
+}
+
+h1 {
+  margin: 0;
+}
+
+#wrapper {
+  display: flex;
+  justify-content: center;
+}
+
+#share {
+  display: flex;
+  flex-direction: column;
+  margin-top: 1em;
+  border: 1px solid rgb(207, 217, 222);
+  border-radius: 16px;
+  padding: 1em;
+}
+
+#share-content {
+  width: 45em;
+  height: 15em;
+}
+
+input, textarea {
+  border: 1px solid rgb(207, 217, 222);
+}
+
+#auth-and-post-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr 64px;
+  gap: 10px;
+  margin-top: 0.5em;
+}
+
+#submitButton {
+  display: flex;
+  color: white;
+  justify-content: center;
+  align-items: center;
+  background-color: rgb(37, 99, 235);
+  transition-property: background-color, box-shadow;
+  transition-duration: 0.2s;
+  padding-right: 16px;
+  padding-left: 16px;
+  border-width: 1px;
+  border-style: solid;
+  border-radius: 9999px;
+  cursor: pointer;
+}

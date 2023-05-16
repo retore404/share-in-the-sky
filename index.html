@@ -6,15 +6,19 @@
   <link rel="stylesheet" href="style.css" type="text/css">
   <script type="module">
     import atprotoapi from 'https://cdn.jsdelivr.net/npm/@atproto/api@0.3.3/+esm'
-    const { BskyAgent } = atprotoapi
+    const { BskyAgent, RichText } = atprotoapi
     const agent = new BskyAgent({ service: "https://bsky.social" })
     let postResult;
 
     async function post() {
       await agent.login({ identifier: document.getElementById("bsky-id").value, password: document.getElementById("bsky-password").value })
+      const text = document.getElementById("share-content").value;
+      const richText = new RichText({ text });
+      await richText.detectFacets(agent);
       postResult = await agent.post({
         $type: "app.bsky.feed.post",
-        text: document.getElementById("share-content").value,
+        text: richText.text,
+        facets: richText.facets,
       });
       console.log(postResult);
     }
@@ -29,9 +33,7 @@
   <script type="text/javascript">
     function getQueryString() {
       const shareString = getParam("text");
-      const shareUrl = getParam("url")
-      console.log(shareString)
-      console.log(shareUrl)
+      const shareUrl = getParam("url");
 
       // クエリ文字列が両方nullだったら処理を終了
       if(shareString == null && shareUrl == null) {
@@ -39,9 +41,7 @@
       }
 
       // クエリ文字列がnullでないとき，textareaに値を設定
-
       document.getElementById("share-content").value = shareString + "\n" + shareUrl
-
     }
 
     /**
@@ -59,8 +59,6 @@
       if (!results[2]) return '';
       return decodeURIComponent(results[2].replace(/\+/g, " "));
     }
-
-
   </script>
 </head>
 

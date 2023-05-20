@@ -6,20 +6,110 @@
   <link rel="stylesheet" href="style.css" type="text/css">
   <script type="module">
     import atprotoapi from 'https://cdn.jsdelivr.net/npm/@atproto/api@0.3.3/+esm'
+    import openGraphScraper from 'https://cdn.jsdelivr.net/npm/open-graph-scraper@6.0.1/+esm'
     const { BskyAgent, RichText } = atprotoapi
     const agent = new BskyAgent({ service: "https://bsky.social" })
     let postResult;
 
     async function post() {
+      // agentの生成・ログイン
       await agent.login({ identifier: document.getElementById("bsky-id").value, password: document.getElementById("bsky-password").value })
-      const text = document.getElementById("share-content").value;
+
+      // 入力値の取得
+      const body = document.getElementById("share-content").value;
+      const url = document.getElementById("share-url").value;
+      const text = body + '\n' + url
+
+      // OGPの取得
+      const ogsResponse = await openGraphScraper({ url });
+      // og:title/og:description/og:imageの取り出し
+      let ogTitle = ""
+      let ogDescription = ""
+      // TODO：sharpを
+      let ogImageUrl = ""
+      try {
+        ogTitle = ogsResponse.result.ogTitle
+      } catch(error) {
+        console.error(error)
+      }
+      try {
+        ogDescription = ogsResponse.result.twitterDescription
+      } catch (error) {
+        console.error(error)
+      }
+      try {
+        ogImageUrl = ogsResponse.result.ogImage[0].url
+      } catch (error) {
+        console.error(error)
+      }
+
+      // og:imageが存在する場合，画像をBlueskyにアップロード
+      let uploadBlobResponse;
+      if (ogImageUrl != "") {
+        // 画像を取得しバッファ化
+        // imgixを使っていることを前提にしてサイズを制限して容量調整
+        const ogImageResponse = await fetch(ogImageUrl.split('?')[0]+'?w=300')
+        const buffer = await ogImageResponse.arrayBuffer()
+        // Blueskyにアップロード
+        const encoding = "image/jpeg"
+        uploadBlobResponse = await agent.uploadBlob(new Uint8Array(buffer),  {
+          encoding,
+        });
+      }
+
+      // 投稿文のリッチテキスト化
       const richText = new RichText({ text });
       await richText.detectFacets(agent);
-      postResult = await agent.post({
-        $type: "app.bsky.feed.post",
-        text: richText.text,
-        facets: richText.facets,
-      });
+
+      // 投稿
+      let postResult
+      // og:title/og:description/og:image 全てが揃っているとき
+      if(ogTitle != '' && ogDescription != '' && ogImageUrl != '') {
+        const embed= {
+          $type: "app.bsky.embed.external",
+          external: {
+            uri: url,
+            thumb: {
+              $type: "blob",
+              ref: {
+                $link: uploadBlobResponse.data.blob.ref.toString(),
+              },
+              mimeType: uploadBlobResponse.data.blob.mimeType,
+              size: uploadBlobResponse.data.blob.size,
+            },
+            title: ogTitle,
+            description: ogDescription,
+          }
+        }
+        postResult = await agent.post({
+          $type: "app.bsky.feed.post",
+          text: richText.text,
+          facets: richText.facets,
+          embed: embed,
+        });
+      } else if(ogImageUrl == '') { // ogImage不存在のときは画像の埋め込みをしない
+        const embed= {
+          $type: "app.bsky.embed.external",
+          external: {
+            uri: url,
+            title: ogTitle,
+            description: ogDescription,
+          }
+        }
+        postResult = await agent.post({
+          $type: "app.bsky.feed.post",
+          text: richText.text,
+          facets: richText.facets,
+          embed: embed,
+        });
+      } else { //ogTitle or ogDescriptionも取得できないときはリンクカードをつけない
+        postResult = await agent.post({
+          $type: "app.bsky.feed.post",
+          text: richText.text,
+          facets: richText.facets,
+        });
+      }
+
       console.log(postResult);
     }
 
@@ -31,17 +121,17 @@
     });
   </script>
   <script type="text/javascript">
-    function getQueryString() {
+    function setQueryStringToInput() {
       const shareString = getParam("text");
       const shareUrl = getParam("url");
 
-      // クエリ文字列が両方nullだったら処理を終了
-      if(shareString == null && shareUrl == null) {
-        return;
+      // クエリ文字列がnullでなければそれぞれinputに設定
+      if(shareString != null) {
+        document.getElementById("share-content").value = shareString
       }
-
-      // クエリ文字列がnullでないとき，textareaに値を設定
-      document.getElementById("share-content").value = shareString + "\n" + shareUrl
+      if(shareUrl != null) {
+        document.getElementById("share-url").value = shareUrl
+      }
     }
 
     /**
@@ -62,14 +152,15 @@
   </script>
 </head>
 
-<body onload="getQueryString()">
+<body onload="setQueryStringToInput()">
   <div id="wrapper">
     <div id="share">
       <h1>Share in the Bluesky</h1>
-      <textarea id="share-content"></textarea>
+      <textarea id="share-content" placeholder="Post body."></textarea>
+      <input type="text" id="share-url" placeholder="Sharing URL.">
       <form id="auth-and-post-row">
-        <input type="text" id="bsky-id" name="bsky-id" autocomplete="username" placeholder="username">
-        <input type="password" id="bsky-password" name="bsky-password" autocomplete="current-password" placeholder="password">
+        <input type="text" id="bsky-id" name="bsky-id" autocomplete="username" placeholder="Username">
+        <input type="password" id="bsky-password" name="bsky-password" autocomplete="current-password" placeholder="Password">
         <div id="submitButton"><span>Post</span></div>
       </form>
     </div>

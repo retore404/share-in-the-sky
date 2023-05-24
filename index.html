@@ -13,34 +13,38 @@
 
     async function post() {
       // agentの生成・ログイン
-      await agent.login({ identifier: document.getElementById("bsky-id").value, password: document.getElementById("bsky-password").value })
+      try {
+        await agent.login({ identifier: document.getElementById("bsky-id").value, password: document.getElementById("bsky-password").value })
+      } catch (error) {
+        console.error("Login to Bluesky is failed.")
+        return;
+      }
 
       // 入力値の取得
       const body = document.getElementById("share-content").value;
       const url = document.getElementById("share-url").value;
       const text = body + '\n' + url
+      // 本文もurlも空なら処理を終了
+      if(text == "") {
+        console.log("Post content is null.");
+        return;
+      }
 
-      // OGPの取得
-      const ogsResponse = await openGraphScraper({ url });
-      // og:title/og:description/og:imageの取り出し
+      // OGPの取得(URLが有効な場合)
+      let ogsResponse;
       let ogTitle = ""
       let ogDescription = ""
-      // TODO：sharpを
       let ogImageUrl = ""
-      try {
-        ogTitle = ogsResponse.result.ogTitle
-      } catch(error) {
-        console.error(error)
-      }
-      try {
-        ogDescription = ogsResponse.result.twitterDescription
-      } catch (error) {
-        console.error(error)
-      }
-      try {
-        ogImageUrl = ogsResponse.result.ogImage[0].url
-      } catch (error) {
-        console.error(error)
+      if(url != "") {
+        try {
+          ogsResponse = await openGraphScraper({ url })
+          // og:title/og:description/og:imageの取り出し
+          ogTitle = ogsResponse.result.ogTitle
+          ogDescription = ogsResponse.result.twitterDescription
+          ogImageUrl = ogsResponse.result.ogImage[0].url
+        } catch(error) {
+          console.error("Get OGP info was failed.")
+        }
       }
 
       // og:imageが存在する場合，画像をBlueskyにアップロード
@@ -48,13 +52,19 @@
       if (ogImageUrl != "") {
         // 画像を取得しバッファ化
         // imgixを使っていることを前提にしてサイズを制限して容量調整
-        const ogImageResponse = await fetch(ogImageUrl.split('?')[0]+'?w=300')
-        const buffer = await ogImageResponse.arrayBuffer()
-        // Blueskyにアップロード
-        const encoding = "image/jpeg"
-        uploadBlobResponse = await agent.uploadBlob(new Uint8Array(buffer),  {
-          encoding,
-        });
+        try {
+          const ogImageResponse = await fetch(ogImageUrl.split('?')[0]+'?w=300')
+          const buffer = await ogImageResponse.arrayBuffer()
+          // Blueskyにアップロード
+          const encoding = "image/jpeg"
+          uploadBlobResponse = await agent.uploadBlob(new Uint8Array(buffer),  {
+            encoding,
+          });
+        } catch (error) {
+          console.error("Upload OGP image to Bluesky is failed.")
+          // アップロード失敗したので，後続処理のためOgImageUrlは取得できなかったものとみなす．
+          ogImageUrl = ""
+        }
       }
 
       // 投稿文のリッチテキスト化
@@ -63,54 +73,69 @@
 
       // 投稿
       let postResult
-      // og:title/og:description/og:image 全てが揃っているとき
-      if(ogTitle != '' && ogDescription != '' && ogImageUrl != '') {
-        const embed= {
-          $type: "app.bsky.embed.external",
-          external: {
-            uri: url,
-            thumb: {
-              $type: "blob",
-              ref: {
-                $link: uploadBlobResponse.data.blob.ref.toString(),
+      // URLが空のとき→textのみ投稿（リンクカードなし）
+      if(url == '') {
+        postResult = await agent.post({
+          $type: "app.bsky.feed.post",
+          text: richText.text,
+          facets: richText.facets,
+        });
+      } else {
+        // URLがあるとき
+        // og:title/og:description/og:image 全てが揃っているとき
+        if(ogTitle != '' && ogDescription != '' && ogImageUrl != '') {
+          const embed= {
+            $type: "app.bsky.embed.external",
+            external: {
+              uri: url,
+              thumb: {
+                $type: "blob",
+                ref: {
+                  $link: uploadBlobResponse.data.blob.ref.toString(),
+                },
+                mimeType: uploadBlobResponse.data.blob.mimeType,
+                size: uploadBlobResponse.data.blob.size,
               },
-              mimeType: uploadBlobResponse.data.blob.mimeType,
-              size: uploadBlobResponse.data.blob.size,
-            },
-            title: ogTitle,
-            description: ogDescription,
+              title: ogTitle,
+              description: ogDescription,
+            }
           }
-        }
-        postResult = await agent.post({
-          $type: "app.bsky.feed.post",
-          text: richText.text,
-          facets: richText.facets,
-          embed: embed,
-        });
-      } else if(ogImageUrl == '') { // ogImage不存在のときは画像の埋め込みをしない
-        const embed= {
-          $type: "app.bsky.embed.external",
-          external: {
-            uri: url,
-            title: ogTitle,
-            description: ogDescription,
+          postResult = await agent.post({
+            $type: "app.bsky.feed.post",
+            text: richText.text,
+            facets: richText.facets,
+            embed: embed,
+          });
+        } else if(ogImageUrl == '') { // ogImage不存在のときは画像の埋め込みをしない
+          const embed= {
+            $type: "app.bsky.embed.external",
+            external: {
+              uri: url,
+              title: ogTitle,
+              description: ogDescription,
+            }
           }
+          postResult = await agent.post({
+            $type: "app.bsky.feed.post",
+            text: richText.text,
+            facets: richText.facets,
+            embed: embed,
+          });
+        } else { //ogTitle or ogDescriptionも取得できないときはリンクカードをつけない
+          postResult = await agent.post({
+            $type: "app.bsky.feed.post",
+            text: richText.text,
+            facets: richText.facets,
+          });
         }
-        postResult = await agent.post({
-          $type: "app.bsky.feed.post",
-          text: richText.text,
-          facets: richText.facets,
-          embed: embed,
-        });
-      } else { //ogTitle or ogDescriptionも取得できないときはリンクカードをつけない
-        postResult = await agent.post({
-          $type: "app.bsky.feed.post",
-          text: richText.text,
-          facets: richText.facets,
-        });
       }
 
-      console.log(postResult);
+      if(postResult.cid != '') {
+        // cidを取れた時はpost成功とみなす
+        console.log("Post to Bluesky is successfully finished.");
+      } else {
+        console.error("Post error due to unexpected failure.");
+      }
     }
 
     export default post
